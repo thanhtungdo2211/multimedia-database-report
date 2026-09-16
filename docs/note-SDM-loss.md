@@ -1,0 +1,20 @@
+- **SDM loss là gì và vì sao dùng KL divergence**
+  - SDM (Similarity Distribution Matching) là loss chính để căn chỉnh ảnh–text trong IRRA (`model/objectives.py:6-42`, gọi từ `model/build.py:106-107`).
+  - Nhãn (`labels`) không phải ma trận đơn vị (identity matrix) như CLIP, mà là ma trận theo `pid` (person ID): `labels = (pid - pid.t() == 0)` — bất kỳ cặp (ảnh i, text j) nào cùng `pid` đều là positive, dù không phải "cặp gốc" trong batch.
+  - Có thêm cơ chế soft label bằng `image_id`: `labels = (labels - image_id_mask) * factor + image_id_mask` — cùng ảnh chính xác → trọng số 1 (rất tin cậy); cùng người khác ảnh → trọng số `factor=0.3` (positive nhưng kém tin cậy hơn). Đây là nhãn soft/graded, không chỉ 0/1.
+  - Similarity giữa ảnh và text được scale bởi `logit_scale` (giống temperature của CLIP) trước khi đưa vào softmax.
+  - `labels_distribute = labels / labels.sum(dim=1)` chuẩn hoá mỗi hàng của ma trận nhãn thành một phân phối xác suất (uniform trên các positive).
+  - `i2t_loss`/`t2i_loss` trong code chính xác là công thức KL divergence: `KL(P‖Q) = Σ P·(logP − logQ)`.
+  - Trong đó P = `i2t_pred` (softmax similarity ảnh↔tất cả text trong batch — phân phối model dự đoán), Q = `labels_distribute` (phân phối nhãn thật, uniform trên các text cùng `pid`).
+  - Loss đo "phân phối tương đồng model tạo ra" lệch bao xa so với "phân phối khớp đúng theo identity" — vì vậy gọi là Similarity Distribution Matching: match hai phân phối xác suất, không phải phân loại đúng 1 lớp.
+
+- **Vì sao không dùng InfoNCE của CLIP thẳng, và SDM là bản tổng quát hoá**
+  - `compute_itc` (`model/objectives.py:50-71`) chính là InfoNCE gốc của CLIP: `labels = torch.arange(batch_size)` — nhãn đúng nằm trên đường chéo, chỉ MỘT positive duy nhất cho mỗi anchor.
+  - Giả định "1 positive duy nhất" đúng với CLIP vì dữ liệu web-scale gần như không có 2 ảnh/text trùng nhau trong cùng batch.
+  - Giả định đó sai với Text-Based Person Search: một `pid` thường có nhiều ảnh và nhiều câu mô tả; khi sample vào batch, rất dễ có 2-3 ảnh/caption cùng người nhưng không nằm trên đường chéo.
+  - Nếu dùng InfoNCE gốc, những cặp cùng người nhưng lệch đường chéo đó bị ép thành negative sai — gọi là false negative problem — gradient sẽ đẩy các cặp lẽ ra phải gần nhau ra xa, gây nhiễu quá trình học.
+  - Ý tưởng của SDM giống InfoNCE: đều kéo cặp ảnh-text khớp lại gần nhau, đẩy cặp không khớp ra xa, dùng softmax của similarity đã scale nhiệt độ.
+  - Khác biệt do đặc thù bài toán: quan hệ ảnh↔text trong Person Search là many-to-many (1 người → nhiều ảnh, nhiều caption), không phải bijection 1-1 như CLIP, nên không thể dùng one-hot label + cross-entropy (= InfoNCE) một cách an toàn.
+  - SDM giải quyết bằng cách xây nhãn multi-hot/soft dựa trên `pid`, chuẩn hoá thành phân phối xác suất, rồi dùng KL divergence để ép phân phối similarity model dự đoán khớp với phân phối nhãn đó — cho phép nhiều positive cùng lúc thay vì chỉ 1.
+  - Về mặt toán học, InfoNCE là trường hợp đặc biệt của SDM: nếu label matrix chỉ có đường chéo = 1 (mỗi ảnh chỉ khớp đúng 1 text), `labels_distribute` trở thành one-hot, và `KL(pred‖one-hot)` rút gọn đúng thành cross-entropy = InfoNCE.
+  - Vậy SDM là "InfoNCE tổng quát hoá" để xử lý nhiều positive trong cùng batch — sinh ra chính vì đặc thù many-to-many (1 danh tính có nhiều ảnh, và có nhiều câu mô tả text) của Text-Based Person Search.

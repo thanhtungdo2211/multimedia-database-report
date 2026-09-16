@@ -1,0 +1,74 @@
+- IRRA dùng tokenizer kiểu CLIP (BPE), không phải BERT, nên phía text **không có** token `[CLS]` theo đúng nghĩa BERT; hai nhánh (ảnh / text) có hai loại "token đặc biệt" khác nhau, dễ nhầm lẫn nên cần tách rõ.
+
+- **`[CLS]` — phía ảnh (Vision Transformer)**
+    - `[CLS]` = viết tắt của **"Classification token"**, xuất hiện đầu tiên trong BERT (Devlin et al., 2018): thêm vào đầu câu, vector tại vị trí đó sau Transformer được dùng làm input cho classification head — nên có tên CLS.
+    - Về sau tên `[CLS]` được dùng chung cho bất kỳ token đặc biệt nào đóng vai trò "vector đại diện tổng hợp cho toàn chuỗi", kể cả khi không dùng để classification mà dùng cho retrieval (như CLIP/IRRA) — tên giữ nguyên theo thói quen dù mục đích đã mở rộng.
+    - Trong code: `self.class_embedding = nn.Parameter(scale * torch.randn(width))` (`model/clip_model.py:277`) — chính cái tên biến `class_embedding` là dấu vết của nguồn gốc "classification".
+    - Bản chất: **1 vector học được duy nhất, KHÔNG phụ thuộc ảnh đầu vào** — lúc khởi tạo giống hệt nhau cho mọi ảnh, chưa chứa thông tin ảnh nào.
+    - **Được chèn khi nào**: ngay trong `VisionTransformer.forward` (`model/clip_model.py:287-305`), mỗi lần model chạy — sau bước patch embedding (`conv1`), trước khi cộng positional embedding. Không phải bước tiền xử lý dữ liệu như SOT/EOT bên text.
+    - Luồng forward: `conv1` patchify ảnh → `[B, num_patches, width]` → `torch.cat([class_embedding, patches], dim=1)` chèn CLS ở **vị trí 0** → `+ positional_embedding` (CLS cũng có 1 positional embedding riêng cho vị trí 0) → `transformer` (self-attention **đầy đủ/bidirectional**, mọi token thấy mọi token, không mask) → `ln_post` → `@ self.proj`.
+    - **Vì sao CLS đại diện được cả ảnh**: mỗi `patch_i` gắn với 1 vùng ảnh cụ thể nên chỉ mang thông tin **cục bộ**; CLS không gắn vùng nào cả, nó là "chỗ trống" nhưng được tham gia self-attention cùng toàn bộ patch → được phép "hỏi" tất cả patch và tổng hợp câu trả lời thành output của chính nó.
+        - Layer 1: `CLS_out = Σ attention_weight(CLS, patch_i) × Value(patch_i)` — hút thông tin từ mọi patch, **có trọng số** (không phải trung bình cộng đều).
+        - Layer 2..L: patch đã được làm giàu ngữ cảnh từ layer trước, CLS tiếp tục hút → càng sâu, CLS càng tổng hợp ở mức trừu tượng/toàn cục hơn.
+        - Sau L lớp, vector tại vị trí CLS không còn "trống" mà đã thành bản tóm tắt có trọng số học được của toàn bộ ảnh, qua nhiều tầng biến đổi phi tuyến.
+    - **Vì sao cần thêm token thay vì trung bình cộng patch**: Transformer chuẩn output ra N vector (1 cho mỗi token input), không tự sinh thêm 1 vector tổng. Hai lựa chọn: (1) Global Average Pooling — ra được 1 vector nhưng trọng số **cố định, đều nhau** cho mọi patch kể cả patch nền vô nghĩa; (2) thêm token "ảo" CLS — để attention **tự học** cách tổng hợp có trọng số, thay đổi theo layer và theo nội dung ảnh (ví dụ ảnh người: patch vùng mặt/quần áo được chú ý nhiều hơn patch nền). CLIP/IRRA chọn cách (2).
+    - **Cắt vector CLS ra như thế nào**: `self.proj` được áp cho **TOÀN BỘ sequence** (CLS + mọi patch), `width (768) → embed_dim (512)`, ra `[B, num_patches+1, 512]`; sau đó `i_feats = image_feats[:, 0, :]` (`model/build.py:83, 96`) chỉ đơn giản là **slice tĩnh index 0** theo chiều sequence — vì CLS luôn nằm cố định ở vị trí đầu tiên.
+
+- **`[SOT]` / `[EOT]` — phía text (CLIP text encoder)**
+    - Text encoder CLIP **không có** token `[CLS]`, thay vào đó dùng `<|startoftext|>` (SOT/SOS) và `<|endoftext|>` (EOT/EOS).
+    - **Được chèn khi nào**: **KHÔNG** chèn trong model forward như CLS, mà chèn lúc tokenize caption — hàm `tokenize` ở `datasets/bases.py:42-57`, gọi trong `ImageTextDataset.__getitem__` (`datasets/bases.py:75-90`), tức là chạy ở **CPU, trong DataLoader**, mỗi khi lấy 1 sample.
+    - Code: `tokens = [sot_token] + tokenizer.encode(caption) + [eot_token]`, rồi `result[:len(tokens)] = tokens` → mỗi hàng có dạng `[SOT, w1, w2, ..., wn, EOT, 0, 0, ..., 0]`, batch `caption_ids` shape `[B, 77]`, phần còn lại pad 0.
+    - Forward (`model/clip_model.py:411-425`): `token_embedding(text) + positional_embedding` → `transformer(x, attn_mask=causal_mask)` → `ln_final` → `@ text_projection` (cũng áp cho toàn bộ sequence).
+    - Điểm khác biệt cốt lõi so với ảnh: text encoder dùng **causal (masked) self-attention** (`build_attention_mask` tạo mask tam giác, token `i` chỉ nhìn được token `≤ i`), trong khi ảnh dùng attention **đầy đủ/bidirectional**.
+    - **Vì sao EOT "gom" được cả câu mà SOT thì không**: do causal attention, token càng ở cuối càng thấy nhiều ngữ cảnh; EOT là token cuối cùng của nội dung thật (trước phần pad) nên là vị trí **duy nhất đã "nhìn thấy" toàn bộ câu** → đóng đúng vai trò pooling mà `[CLS]` đảm nhiệm trong BERT, chỉ khác là nằm ở **cuối** chuỗi chứ không phải đầu.
+    - SOT chỉ là marker mở đầu cố định (giữ đúng format tokenize gốc của CLIP để tương thích pretrained weights), **không** được dùng làm pooled feature.
+    - **Cắt vector EOT ra như thế nào**: `t_feats = text_feats[torch.arange(B), caption_ids.argmax(dim=-1)]` (`model/build.py:87-88, 98`) — **không** phải slice tĩnh mà là **gather động theo từng sample**: `argmax(dim=-1)` tìm vị trí có token-id lớn nhất, chính là EOT vì `<|endoftext|>` được thêm cuối cùng vào vocab nên có id lớn nhất (`utils/simple_tokenizer.py:75`), còn pad = 0 luôn nhỏ nhất. Mỗi câu dài ngắn khác nhau → vị trí EOT khác nhau → không thể dùng 1 slice chung cho cả batch.
+
+- **Vector 512-D cuối cùng chính là CLS (ảnh) và EOT (text)**
+    - **Đúng**: output cuối cùng sau projection xuống 512-D ở nhánh ảnh chính là vector CLS, ở nhánh text chính là vector EOT — không qua bước pooling/biến đổi nào thêm.
+    - Ý nghĩa: bản tóm tắt ngữ nghĩa toàn ảnh / toàn câu, sống trong **không gian nhúng chung (joint embedding space)** cùng 512 chiều, để tính cosine similarity trực tiếp giữa ảnh và caption.
+    - Đây chính là `image_fetures` / `text_fetures` được đưa thẳng vào `compute_sdm`, `compute_itc`, `compute_cmpm` — và qua `classifier` cho `compute_id` (`model/build.py:103-115`).
+    - Ở inference/retrieval: `i_feats` (CLS) chính là image embedding dùng để search, so similarity với `t_feats` (EOT) — không có bước trung gian nào khác.
+
+- **Các token này là tham số học được**
+    - `class_embedding = nn.Parameter(...)` (`model/clip_model.py:277`) — 1 vector duy nhất, được backprop cập nhật mỗi bước training giống mọi weight khác.
+    - SOT/EOT chỉ là 2 id trong vocab, embedding của chúng là **2 hàng trong `nn.Embedding(vocab_size, transformer_width)`** (`model/clip_model.py:358`) — học y hệt embedding của các từ bình thường.
+    - Luồng gradient (backward): `loss (sdm/itc/id)` → phụ thuộc `cosine(i_feats, t_feats)` → `i_feats = image_feats[:,0,:]` → gradient chảy ngược vào `proj`, các lớp Transformer, **và** `class_embedding` (và cả `conv1` vì patch token bắt nguồn từ đó) → `t_feats` → chảy vào `text_projection`, Transformer layers, **và** đúng hàng embedding của EOT (gián tiếp cả SOT vì nó nằm trong context mà mọi token sau attend tới).
+    - Điểm quan trọng: gradient không chỉ cập nhật `class_embedding`, mà cập nhật **toàn bộ trọng số attention quyết định "CLS nên hút thông tin từ đâu"**. Vì loss đo trực tiếp "vector CLS của ảnh này có giống vector caption đúng của nó không", nên qua hàng nghìn bước train, mạng học được cách để CLS tổng hợp đúng thứ cần thiết để phân biệt ảnh này với ảnh khác trong không gian chung với text — đây không phải hệ quả phụ mà chính là mục tiêu huấn luyện.
+
+- **Nhánh MLM không dùng vector pooled**
+    - `model/build.py:125-136`: `mlm_feats = encode_text(...)` giữ **toàn bộ sequence** (không lấy riêng EOT), `image_feats` giữ **toàn bộ patch** (không chỉ CLS), rồi `cross_former(...)` → `mlm_head(x)`.
+    - Lý do: MLM cần dự đoán lại từ bị mask ở từng vị trí, mỗi token phải cross-attention với toàn bộ patch ảnh (key/value) để "suy luận quan hệ ngầm" (Implicit Relation Reasoning) — 1 vector CLS/EOT duy nhất không đủ chi tiết.
+
+- **So sánh tổng hợp CLS (ảnh) vs EOT (text)**
+    - Chèn ở đâu:
+        - Ảnh `[CLS]`: trong `VisionTransformer.forward`, mỗi lần model chạy.
+        - Text `[EOT]`: trong `Dataset.__getitem__` (`tokenize()`), trước khi vào model.
+    - Attention:
+        - Ảnh `[CLS]`: full/bidirectional — mọi token thấy nhau.
+        - Text `[EOT]`: causal — token chỉ thấy token trước nó.
+    - Vị trí pooling:
+        - Ảnh `[CLS]`: cố định, index 0 (slice tĩnh).
+        - Text `[EOT]`: động, `argmax(id)` = vị trí EOT, khác nhau mỗi sample.
+    - Projection:
+        - Ảnh `[CLS]`: `proj` áp lên cả chuỗi, sau đó mới slice CLS.
+        - Text `[EOT]`: `text_projection` áp lên cả chuỗi, sau đó mới gather EOT.
+    - Bản chất:
+        - Ảnh `[CLS]`: `nn.Parameter` học trực tiếp.
+        - Text `[EOT]`: 2 hàng trong `nn.Embedding` (vocab), học như từ bình thường.
+    - Dùng ở loss:
+        - Ảnh `[CLS]`: `sdm`, `itc`, `cmpm`, `id` (qua `i_feats`).
+        - Text `[EOT]`: `sdm`, `itc`, `cmpm`, `id` (qua `t_feats`).
+    - Nhánh MLM:
+        - Ảnh: dùng **toàn bộ** patch token, không chỉ CLS.
+        - Text: dùng **toàn bộ** token sequence, không chỉ EOT.
+
+- **Các mô hình ViT khác có dùng `[CLS]` không?**
+    - Có, khá phổ biến nhưng **không phải universal**:
+        - **ViT gốc** (Dosovitskiy et al., *An Image is Worth 16x16 Words*, 2020) — nơi khai sinh kỹ thuật này, copy trực tiếp ý tưởng `[CLS]` của BERT.
+        - **CLIP's ViT** (chính là base model IRRA đang dùng) — dùng CLS y như trên.
+        - **DeiT** — dùng CLS token, thêm 1 "distillation token" thứ hai cho knowledge distillation.
+        - **MAE** (Masked Autoencoder) — vẫn giữ CLS token trong encoder.
+    - Không dùng CLS:
+        - **Swin Transformer** (kiến trúc phân cấp, windowed attention) — thường dùng global average pooling trên feature map cuối thay vì CLS token.
+    - Ngay trong paper ViT gốc, ablation (Appendix D.3) chỉ ra dùng **GAP thay CLS cho kết quả tương đương**, miễn tinh chỉnh learning rate phù hợp — tức CLS không phải điều kiện cần để ViT hoạt động tốt, mà là **lựa chọn thiết kế** (chọn chủ yếu để giữ tương đồng kiến trúc với Transformer gốc/BERT, dễ so sánh).
