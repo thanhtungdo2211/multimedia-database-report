@@ -1,0 +1,70 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env/
+.env.*
+!.env.example
+
+# Test, coverage and type-checker output
+.pytest_cache/
+.mypy_cache/
+.pytype/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Local configuration and secrets
+*.local
+*.secret
+
+# IDEs and operating-system files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs and experiment output
+*.log
+logs/
+log/
+outputs/
+output/
+results/
+checkpoints/
+checkpoint/
+tensorboard/
+wandb/
+
+# Common ML artifacts
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+
+# Downloaded/generated datasets (keep source code and small committed assets)
+data/*/
+datasets/*/
