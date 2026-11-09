@@ -68,3 +68,6 @@ wandb/
 # Downloaded/generated datasets (keep source code and small committed assets)
 data/*/
 datasets/*/
+
+# Claude Code local skills
+.claude/skills/

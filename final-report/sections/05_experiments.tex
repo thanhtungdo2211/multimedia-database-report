@@ -1,0 +1,120 @@
+\section{Experiments \tagO}\label{sec:experiments}
+
+\subsection{Setup}\label{sec:setup}
+
+\textbf{Data and metrics.} RSTPReid~\cite{Zhu_2021} contains 20,505 images of 4,101 identities with two descriptions per image, split into 3,701 training, 200 validation and 200 test identities. The test protocol ranks a gallery of 1,000 images against 2,000 textual queries. We report Rank-$K$ accuracy (R@$K$, the fraction of queries whose first correct image appears in the top $K$), mean average precision (mAP) and mean inverse negative penalty (mINP)~\cite{jiang2023crossmodalimplicitrelationreasoning}. With 2,000 queries, R@1 is a binomial estimate whose standard error is about 1.1 points near 58\%; mAP averages over complete rankings and is less noisy.
+
+\textbf{Implementation.} We build on the public \texttt{openai/clip-vit-base-patch16} checkpoint. Training images are flipped, padded and randomly cropped, and randomly erased; captions are truncated to 77 tokens. We use AdamW~\cite{loshchilov2019decoupledweightdecayregularization} with peak learning rate $10^{-4}$, weight decay 0.02, batch size \batchSize, gradient clipping at norm 5, mixed precision with the loss computed in single precision, and seed 42. The learning rate rises linearly over 3 warm-up epochs and then follows a cosine decay to 1\% of its peak. One epoch takes about \sdmMinPerEp{} minutes on a single Google Colab GPU. The SDM run uses a \sdmRounds-epoch schedule; the InfoNCE and MPCE runs use a \nceRounds-epoch schedule, with InfoNCE stopped after \nceEpochs{} epochs. The warm-up is identical, and through epoch 9 the learning rates remain close (at epoch 4, $\sdmLrFour$ vs.\ $\nceLrFour\times10^{-5}$; at epoch 9, $\sdmLrNine$ vs.\ $\nceLrNine\times10^{-5}$).
+
+\textbf{Protocol.} We evaluate after every epoch. Like IRRA, we report the epoch with the best R@1 (\emph{peak}). Selecting an epoch on the test split is optimistic, so we also report the \emph{converged} value, the mean $\pm$ standard deviation over the last six epochs.
+
+\begin{table*}[t]
+\centering
+\caption{Results on RSTPReid (text-to-image, \%). Rows marked IRRA are quoted from~\cite{jiang2023crossmodalimplicitrelationreasoning} (Tables 3 and 4 there; that ablation reports no mAP or mINP). Our rows are single runs at their peak epoch; converged values are in \cref{tab:ablation}. ``Stored'' is the size of the trained parameters in fp32.}
+\label{tab:main}
+\footnotesize
+\setlength{\tabcolsep}{3.6pt}
+\begin{tabular}{@{}llllrr ccccc@{}}
+\toprule
+& Method & Tuning & Loss & Trainable & Stored & R@1 & R@5 & R@10 & mAP & mINP\\
+\midrule
+\multirow{3}{*}{\rotatebox{90}{\scriptsize IRRA}}
+& CLIP baseline & full & InfoNCE & 149.6\,M$^\ast$ & \fullMiB\,MiB & 54.05 & 80.70 & 88.00 & 43.41 & 22.31\\
+& SDM only (Tab.~4, No.~2) & full & SDM & 149.6\,M$^\ast$ & \fullMiB\,MiB & 57.20 & 79.90 & 88.10 & -- & --\\
+& IRRA (full model) & full & SDM+ID+IRR & $>$165\,M$^\dagger$ & $>$630\,MiB & \textbf{60.20} & \textbf{81.30} & 88.20 & \textbf{47.17} & \textbf{25.28}\\
+\midrule
+\multirow{3}{*}{\rotatebox{90}{\scriptsize Ours}}
+& LoRA $r{=}4$ (ep.~\ncePeakEp) & LoRA & InfoNCE & 0.49\,M & \ckptMiB\,MiB & \ncePeakR & \ncePeakRfive & \ncePeakRten & \ncePeakM & \ncePeakMINP\\
+& LoRA $r{=}4$ (ep.~\mpcePeakEp) & LoRA & MPCE & 0.49\,M & \ckptMiB\,MiB & \mpcePeakR & \mpcePeakRfive & \mpcePeakRten & \mpcePeakM & \mpcePeakMINP\\
+& LoRA $r{=}4$ (ep.~\sdmPeakEp) & LoRA & SDM & 0.49\,M & \ckptMiB\,MiB & \sdmPeakR & \sdmPeakRfive & \textbf{\sdmPeakRten} & \sdmPeakM & \sdmPeakMINP\\
+\bottomrule
+\end{tabular}\\[2pt]
+\parbox{\textwidth}{\scriptsize $^\ast$CLIP ViT-B/16 as counted in our implementation (\nBackbone{} parameters). $^\dagger$CLIP plus the 13.66\,M IRR encoder~\cite{jiang2023crossmodalimplicitrelationreasoning} and the \idHeadM\,M ID classifier; the MLM head is not counted.}
+\end{table*}
+
+\subsection{LoRA versus full fine-tuning (Q1)}\label{sec:main}
+
+\Cref{tab:main} answers Q1. The fair comparison is IRRA's ablation row that, like us, uses SDM alone: full fine-tuning reaches 57.20\% R@1, and LoRA reaches \sdmPeakR\% at its peak and \sdmConvR{}$\pm$\sdmConvRsd\% once converged. The peak exceeds the full fine-tuning figure by \gapIrraSdmR{} points, about 1.5 standard errors, and the converged value matches it, so we read the two as on par rather than claiming an improvement from a single seed. This parity costs \trainPct\% of the parameters and a \ckptMiB\,MiB checkpoint instead of \fullMiB\,MiB, a factor of \sizeRatio. Against the complete IRRA model, which adds the ID loss and the IRR encoder, LoRA+SDM trails by \gapIrraR{} points of R@1 and \gapIrraM{} of mAP at the peak. Closing that gap would require extra objectives that bring their own parameters, the trade-off the PETL methods in \cref{sec:related} make.
+
+\subsection{Where does SDM's gain come from? (Q2)}\label{sec:ablation}
+
+\begin{table}[t]
+\centering
+\caption{Loss ablation with LoRA $r{=}4$ (single seed, \%). Only the loss differs. Converged values average the last six epochs of each run's own schedule.}
+\label{tab:ablation}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lllccc@{}}
+\toprule
+Loss & Target & Divergence & Peak R@1 (ep.) & Peak mAP & Conv.\ R@1\\
+\midrule
+InfoNCE & diagonal & CE & \ncePeakR{} (\ncePeakEp) & \ncePeakM & \nceConvR{}$\pm$\nceConvRsd\\
+MPCE & identity & $\KL(q\Vert p)$ & \mpcePeakR{} (\mpcePeakEp) & \mpcePeakM & \mpceConvR{}$\pm$\mpceConvRsd\\
+SDM & identity & $\KL(p\Vert q)$ & \textbf{\sdmPeakR} (\sdmPeakEp) & \textbf{\sdmPeakM} & \textbf{\sdmConvR}$\pm$\sdmConvRsd\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\pgfplotsset{
+  every axis/.append style={width=\columnwidth,height=3.55cm,xmin=0.5,xmax=30.5,
+    tick label style={font=\scriptsize},label style={font=\scriptsize},
+    grid=major,grid style={black!12},axis line style={black!45},tick style={black!45}},
+  sdm/.style={cSDM,thick,mark=*,mark size=1.3pt},
+  mpce/.style={cMPCE,thick,dashed,mark=triangle*,mark size=1.6pt,mark options={solid}},
+  nce/.style={cNCE,thick,densely dotted,mark=square*,mark size=1.1pt,mark options={solid}}}
+\begin{axis}[name=top,ylabel={R@1 (\%)},ymin=40,ymax=61,xticklabels={}]
+\addplot[sdm] table[x=epoch,y=r1,col sep=comma]{generated/curve_sdm.csv};
+\addplot[mpce] table[x=epoch,y=r1,col sep=comma]{generated/curve_mpce.csv};
+\addplot[nce] table[x=epoch,y=r1,col sep=comma]{generated/curve_nce.csv};
+\draw[cIRRA,thin,dashdotted] (axis cs:0.5,57.20) -- (axis cs:30.5,57.20) node[pos=0.98,above left,font=\tiny,inner sep=1pt]{IRRA full FT, SDM 57.20};
+\draw[cIRRA,thin,dashdotted] (axis cs:0.5,54.05) -- (axis cs:30.5,54.05) node[pos=0.98,above left,font=\tiny,inner sep=1pt]{IRRA full FT, InfoNCE 54.05};
+\end{axis}
+\begin{axis}[at={(top.south)},anchor=north,yshift=-1.5mm,xlabel={epoch},ylabel={mAP (\%)},ymin=30,ymax=47,
+  legend style={font=\scriptsize,at={(0.99,0.04)},anchor=south east,draw=black!30,fill=white,legend columns=3}]
+\addplot[sdm] table[x=epoch,y=map,col sep=comma]{generated/curve_sdm.csv};
+\addplot[mpce] table[x=epoch,y=map,col sep=comma]{generated/curve_mpce.csv};
+\addplot[nce] table[x=epoch,y=map,col sep=comma]{generated/curve_nce.csv};
+\legend{SDM,MPCE,InfoNCE}
+\end{axis}
+\end{tikzpicture}
+\caption{Test R@1 and mAP after each epoch. MPCE and InfoNCE peak at the end of warm-up and then decline together; SDM keeps improving. Grey lines: IRRA's full fine-tuning results~\cite{jiang2023crossmodalimplicitrelationreasoning}.}
+\label{fig:curves}
+\end{figure}
+
+\Cref{tab:ablation} and \cref{fig:curves} compare the three losses under identical LoRA training. SDM leads InfoNCE by \gapSdmNceR{} points of R@1 and \gapSdmNceM{} of mAP at the peak, a gain of the same size as the \gainIrraSdm{} points IRRA reports for full fine-tuning. LoRA therefore preserves SDM's benefit. The ablation also tells us where that benefit comes from.
+
+\textbf{Identity-aware targets contribute nothing measurable.} MPCE and InfoNCE share the same \nPairedEp-epoch schedule, so they can be compared epoch by epoch. Across these epochs MPCE's R@1 differs from InfoNCE's by \mpNceDiffR{}$\pm$\mpNceDiffRsd{} points on average (largest gap \mpNceDiffRmax) and its mAP by \mpNceDiffM{} (largest \mpNceDiffMmax), both well inside run-to-run noise. The ratio of their training losses stays between \lossRatioLo{} and \lossRatioHi, as \cref{sec:analysis} predicts: exactly 2 for one-hot rows, slightly more because of the \posFrac\% of rows with an extra positive. This is an empirical confirmation that the targets are almost always one-hot.
+
+\textbf{The KL direction accounts for the whole gain.} SDM and MPCE share the target and differ only in the direction of the divergence, and SDM leads MPCE by \gapSdmMpceR{} points of R@1 and \gapSdmMpceM{} of mAP at the peak. The curves show how this gap arises. InfoNCE and MPCE peak at epoch 3, the end of warm-up, and then lose \nceDrop{} and \mpceDrop{} points of R@1 while their training losses keep falling (InfoNCE from \nceLossFirst{} to \nceLossLast), a textbook overfitting pattern. SDM instead climbs until epoch \sdmPeakEp{} and ends within \sdmDrop{} points of its peak. Over epochs 4--9 the learning rates of the two schedules differ by at most \lrMaxRelDiff\%, yet the curves move in opposite directions (SDM from \sdmEpFourR{} to \sdmEpNineR, InfoNCE from \nceEpFourR{} to \nceEpNineR), so the schedule mismatch cannot explain the divergence.
+
+\textbf{Interpretation.} With random sampling, IRRA's own rationale for SDM, that it accounts for several positives per batch, applies to fewer than 2\% of rows and cannot explain a three-point gain. \Cref{eq:decomp,eq:grad} offer an explanation consistent with the curves: InfoNCE spends the largest gradients on the pairs it ranks worst, which on a small dataset with ambiguous descriptions leads it to memorise them, whereas SDM's bounded, MAE-like term down-weights those pairs and its entropy bonus discourages over-confident similarity distributions. We have not yet separated the two terms experimentally, so this remains a hypothesis that the decomposition makes testable. Varying $\epsilon$ rescales $\lambda$ and thus the weight of the MAE term relative to the entropy bonus; training on each term alone isolates them.
+
+\subsection{Implications for federated training}\label{sec:fl}
+
+\begin{table}[t]
+\centering
+\caption{What the trainable-part size implies for a federation of $K{=}\kClients$ clients (one per RSTPReid camera) over $R{=}\rRounds$ rounds. Arithmetic from the parameter counts (fp32), not a measurement; downloads from the server double the traffic.}
+\label{tab:cost}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & Full FT & LoRA $r{=}4$ & Ratio\\
+\midrule
+Trainable parameters & \nBackboneM\,M & 0.49\,M & \sizeRatio$\times$\\
+Upload per client per round & \fullMiB\,MiB & \ckptMiB\,MiB & \sizeRatio$\times$\\
+Upload per round ($K$ clients) & \upFullRoundGiB\,GiB & \upLoraRoundMiB\,MiB & \sizeRatio$\times$\\
+Upload over $R$ rounds & \upFullTotalGiB\,GiB & \upLoraTotalGiB\,GiB & \sizeRatio$\times$\\
+AdamW state per client & \optFullGiB\,GiB & \optLoraMiB\,MiB & \sizeRatio$\times$\\
+\midrule
+R@1, SDM only (peak / conv.) & 57.20 / -- & \sdmPeakR{} / \sdmConvR & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\Cref{tab:cost} translates the parameter count into the quantities that dominate FL, assuming every client participates in every round and uploads its whole trainable part. Under full fine-tuning each round would move \upFullRoundGiB\,GiB upstream, a heavy load for camera-side clients, whereas a whole LoRA round moves \roundVsOneFull$\times$ less than a single client's full-model upload. Each client's optimiser state shrinks by the same factor, which matters on edge hardware. Together with \cref{sec:main}, this is the premise the thesis builds on: the \sizeRatio$\times$ reduction costs no measurable accuracy against SDM-only full fine-tuning and \gapIrraR{} points of R@1 against the complete IRRA model.
+
+The loss analysis carries over as well. SDM has no parameters tied to the global identity set, unlike IRRA's ID classifier, whose rows refer to identities that other clients may never see; it can therefore be optimised locally and averaged without modification. And because SDM's gain does not rely on several images of one person sharing a batch (\cref{sec:ablation}), there is no reason to expect it to vanish on clients that hold few images per identity. Whether these premises survive non-IID clients and the averaging of low-rank factors is the subject of the thesis, not of this report.

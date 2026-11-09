@@ -1,0 +1,62 @@
+% AC5211 Multimedia Database -- final report.
+% Build:  python3 scripts/gen_results.py && latexmk -pdf main.tex
+% Every number from our own runs comes from generated/numbers.tex (results/*.csv);
+% numbers quoted from IRRA are typed inline next to a citation.
+\documentclass[conference,a4paper]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,calc,backgrounds}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[hidelinks]{hyperref}
+\usepackage[capitalize,nameinlink]{cleveref}
+
+\input{generated/numbers.tex}
+
+% series colours (validated categorical palette; also distinguished by marker/dash)
+\definecolor{cSDM}{HTML}{2A78D6}
+\definecolor{cMPCE}{HTML}{EB6834}
+\definecolor{cNCE}{HTML}{1BAF7A}
+\definecolor{cOurs}{HTML}{2A78D6}
+\definecolor{cIRRA}{HTML}{6B6B6B}
+
+\newcommand{\ours}[1]{\textcolor{cOurs}{#1}}
+\newcommand{\tagE}{\textsc{[Existing]}}
+\newcommand{\tagO}{\textsc{[Ours]}}
+\DeclareMathOperator{\KL}{KL}
+
+\begin{document}
+
+\title{LoRA Meets Similarity Distribution Matching:\\
+Parameter-Efficient CLIP Tuning for Text-Based Person Search}
+
+\author{\IEEEauthorblockN{\DJ{}\~{\^o} Thanh T\`ung}
+\IEEEauthorblockA{Student ID: 20252432M\\
+AC5211 Multimedia Database --- Final Report\\
+Hanoi, Vietnam}}
+
+\maketitle
+
+\input{sections/00_abstract}
+\input{sections/01_intro}
+\input{sections/02_related}
+\input{sections/03_background}
+\input{sections/04_method}
+\input{sections/05_experiments}
+\input{sections/06_conclusion}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

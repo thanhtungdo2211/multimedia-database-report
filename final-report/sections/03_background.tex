@@ -1,0 +1,25 @@
+\section{Background: CLIP and IRRA \tagE}\label{sec:background}
+
+Everything in this section is taken from CLIP~\cite{radford2021learningtransferablevisualmodels} and IRRA~\cite{jiang2023crossmodalimplicitrelationreasoning}; it fixes notation for \cref{sec:method}.
+
+\textbf{Dual encoder.} An image $I_i$ is encoded by a ViT-B/16 vision transformer~\cite{dosovitskiy2021imageworth16x16words} and a description $T_j$ by a 12-layer text transformer; the outputs are projected to a shared 512-dimensional space and $\ell_2$-normalised, giving $\mathbf{v}_i$ and $\mathbf{t}_j$. Following IRRA, images are resized to $384{\times}128$, which preserves a standing person's aspect ratio; the pre-trained $14{\times}14$ grid of position embeddings is resampled bicubically to the resulting $24{\times}8$ patch grid. Retrieval ranks gallery images by the cosine similarity $\mathbf{v}_i^{\top}\mathbf{t}_j$.
+
+\textbf{Batch distributions.} For a mini-batch of $B$ image--text pairs with identity labels $y_1,\dots,y_B$, the image-to-text matching distribution of row $i$ is
+\begin{equation}
+p_{i,j}=\frac{\exp(\mathbf{v}_i^{\top}\mathbf{t}_j/\tau)}{\sum_{k=1}^{B}\exp(\mathbf{v}_i^{\top}\mathbf{t}_k/\tau)},\qquad \tau=0.02,\label{eq:p}
+\end{equation}
+and the text-to-image distribution is defined symmetrically. CLIP's InfoNCE loss treats only the paired caption as correct:
+\begin{equation}
+\mathcal{L}_{\mathrm{nce}}=\tfrac12\big(\mathcal{L}^{\mathrm{i2t}}+\mathcal{L}^{\mathrm{t2i}}\big),\qquad \mathcal{L}^{\mathrm{i2t}}=-\frac1B\sum_{i}\log p_{i,i}.\label{eq:nce}
+\end{equation}
+
+\textbf{SDM.} IRRA argues that this target is wrong whenever another pair in the batch shows the same person, and replaces it by the identity-aware distribution
+\begin{equation}
+q_{i,j}=\frac{\mathbf{1}[y_i=y_j]}{\sum_{k}\mathbf{1}[y_i=y_k]}.\label{eq:q}
+\end{equation}
+SDM then minimises $\KL(p_{i,\cdot}\Vert q_{i,\cdot})$, with the \emph{predicted} distribution in the first argument and a small $\epsilon=10^{-8}$ that keeps the logarithm finite:
+\begin{equation}
+\mathcal{L}^{\mathrm{i2t}}_{\mathrm{sdm}}=\frac1B\sum_{i}\sum_{j}p_{i,j}\log\frac{p_{i,j}}{q_{i,j}+\epsilon},\quad \mathcal{L}_{\mathrm{sdm}}=\mathcal{L}^{\mathrm{i2t}}_{\mathrm{sdm}}+\mathcal{L}^{\mathrm{t2i}}_{\mathrm{sdm}}.\label{eq:sdm}
+\end{equation}
+
+\textbf{IRRA's other components.} IRR adds a cross-modal interaction encoder (13.66\,M parameters~\cite{jiang2023crossmodalimplicitrelationreasoning}) that predicts masked words from the image, and the ID loss adds a linear classifier over all training identities. IRRA's ablation on RSTPReid (its Table~4, reproduced in our \cref{tab:main}) reports 54.05\% Rank-1 for InfoNCE alone, 57.20\% with SDM alone, and 60.20\% with all three objectives. IRRA trains for 60 epochs with Adam at a learning rate of $10^{-5}$ and samples batches uniformly at random by default.

@@ -1,0 +1,38 @@
+% Pipeline figure, shared by the report (sections/04_method.tex) and the poster.
+% Needs: TikZ libraries positioning, arrows.meta, calc; colour cOurs.
+% Sizes are absolute (mm), so the font is fixed at 7 pt; the poster scales the whole picture.
+% Grid-aligned: both encoder lanes have identical widths, all arrows are horizontal or vertical.
+\begin{tikzpicture}[
+  font=\fontsize{7}{8.5}\selectfont,
+  enc/.style={draw=black!45, fill=black!5, text width=29mm, align=center,
+              inner sep=1.2mm, minimum height=8mm},
+  lora/.style={draw=cOurs, fill=cOurs!12, text width=29mm, align=center,
+               inner sep=1.2mm, minimum height=4.5mm},
+  op/.style={draw=black!60, fill=white, align=center, inner sep=1.2mm, minimum height=9mm},
+  loss/.style={draw=cOurs, fill=cOurs!12, align=center, inner sep=1.2mm, minimum height=9mm},
+  io/.style={align=center, inner sep=0.5mm},
+  arr/.style={-{Stealth[length=1.6mm]}, draw=black!70}]
+% ---- image lane (top) and text lane (bottom), same x positions
+\node[enc]  (vit) at (0, 7.5mm)  {ViT-B/16 image encoder\\12 layers, frozen};
+\node[lora, below=0pt of vit]     (lv)  {+ LoRA on $W_{q,k,v,o}$};
+\node[enc]  (tr)  at (0,-11mm)   {Text transformer\\12 layers, frozen};
+\node[lora, below=0pt of tr]      (lt)  {+ LoRA on $W_{q,k,v,o}$};
+\node[io, left=3mm of vit] (img) {person image\\$384{\times}128$};
+\node[io, left=3mm of tr]  (txt) {description\\$\le$77 tokens};
+\node[io, right=3mm of vit] (v) {$\mathbf{v}_i$};
+\node[io, right=3mm of tr]  (t) {$\mathbf{t}_j$};
+% ---- similarity and loss, centred between the two lanes
+\path (v) -- (t) coordinate[pos=0.5] (mid);
+\node[op]   (S) at ($(mid)+(10mm,0)$) {$B{\times}B$\\cosine$/\tau$};
+\node[loss, right=4mm of S] (L) {$\mathcal{L}_{\mathrm{sdm}}$\\only loss};
+\node[io, above=4mm of L] (y) {identities $y$};
+% ---- arrows (orthogonal only)
+\draw[arr] (img) -- (vit);
+\draw[arr] (txt) -- (tr);
+\draw[arr] (vit) -- (v);
+\draw[arr] (tr)  -- (t);
+\draw[arr] (v) -| (S.north);
+\draw[arr] (t) -| (S.south);
+\draw[arr] (S) -- (L);
+\draw[arr] (y) -- (L);
+\end{tikzpicture}

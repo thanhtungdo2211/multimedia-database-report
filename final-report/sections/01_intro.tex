@@ -1,0 +1,37 @@
+\section{Introduction}\label{sec:intro}
+
+Text-based person search (TBPS) ranks a gallery of pedestrian images against a natural-language query such as ``a woman in a white coat carrying a black backpack''~\cite{li2017personsearchnaturallanguage}. It is a cross-modal retrieval problem of the kind multimedia databases are built to serve: the gallery is indexed once by an image encoder, each query is embedded by a text encoder, and retrieval reduces to a nearest-neighbour search in a shared embedding space. Its difficulty lies in granularity: every gallery item is a person, so the description must separate individuals who differ only in a garment's colour or a carried object.
+
+Vision--language models pre-trained on web-scale image--text pairs, CLIP in particular~\cite{radford2021learningtransferablevisualmodels}, now provide the backbone of the strongest TBPS methods~\cite{yan2022clipdrivenfinegrainedtextimageperson,cao2023empiricalstudycliptextbased}. IRRA~\cite{jiang2023crossmodalimplicitrelationreasoning}, the CVPR~2023 paper we presented at midterm, fine-tunes the entire CLIP ViT-B/16 backbone together with three objectives: an implicit relation reasoning (IRR) branch, an identity (ID) classification loss, and the Similarity Distribution Matching (SDM) loss. Two aspects of this recipe motivate the present work. Full fine-tuning updates and stores every one of the backbone's \nBackboneM\,M parameters, and IRRA's own ablation shows that SDM is the single component that contributes most on RSTPReid~\cite{Zhu_2021}. Parameter-efficient transfer learning (PETL) methods for TBPS~\cite{liu2024clipbasedsynergisticknowledgetransfer,liu2025dmadapterdomainawaremixtureofadapterstextbased,liu2025uppersonunifiedparameterefficienttransfer} have since shown that a frozen backbone can compete, but they still train millions of parameters and combine several modules, so the contribution of the loss is hard to isolate.
+
+\textbf{Context and goal.} The experiments in this report are drawn from the author's master's thesis, which studies PEFT of foundation models in federated learning (FL), with TBPS as the application. Surveillance images belong to operators that often cannot pool them, so the model has to be trained where the data reside~\cite{mcmahan2023communicationefficientlearningdeepnetworks,Ma_2024}. FL pays for the trainable part repeatedly: every client receives and returns it in every round, for tens of rounds, often over limited links~\cite{Ma_2024}. With full fine-tuning of CLIP that is \fullMiB\,MiB per client per round. Before the federated difficulties (non-IID clients, aggregation) are even reached, one premise must hold: \emph{a much smaller trainable part must lose little accuracy}. This course report establishes that premise in the centralised setting, where it can be measured cleanly; the federated experiments belong to the thesis and are outside its scope.
+
+We therefore study the most reduced configuration we could construct: a frozen CLIP backbone, low-rank adaptation (LoRA)~\cite{hu2021loralowrankadaptationlarge} of the attention projections, and SDM as the only objective. Two questions guide the report. \textbf{(Q1)} How much accuracy does this configuration give up relative to IRRA's fully fine-tuned counterpart, and how much does it save? \textbf{(Q2)} Why does SDM outperform the InfoNCE loss~\cite{oord2019representationlearningcontrastivepredictive} used by CLIP? Q2 serves the same goal: SDM is the only IRRA objective with no parameters tied to the global identity set, hence the one that carries over to FL unchanged, and whether its gain persists on clients holding few images per person depends on why it helps. IRRA attributes the gain to SDM's ability to treat all same-identity pairs in a batch as positives; we test this explanation directly.
+
+\textbf{Contributions.} Because this is a course report building on a paper we studied, \cref{tab:contrib} states which parts are taken from prior work and which are ours, and the section headings carry the tags \tagE{} and \tagO{}. Our contributions are:
+\begin{enumerate}
+  \item A LoRA+SDM pipeline for TBPS that trains \trainPct\% of CLIP's parameters and reaches \sdmPeakR\% (peak) / \sdmConvR\% (converged) Rank-1 on RSTPReid, against 57.20\% for IRRA's full fine-tuning with SDM alone (\cref{sec:main}), with an accounting of what this saves in storage, optimiser memory and federated communication (\cref{sec:fl}).
+  \item An analysis of SDM under identity labels: a closed-form decomposition showing that it does not reduce to InfoNCE when each identity appears once in a batch, its gradient, and the observation that this one-hot regime covers \oneHotFrac\% of batch rows under random sampling (\cref{sec:analysis}).
+  \item A controlled loss ablation under LoRA, including a multi-positive cross-entropy (MPCE) control that we designed to separate the effect of identity-aware targets from that of the KL direction (\cref{sec:ablation}).
+\end{enumerate}
+
+\begin{table}[t]
+\centering
+\caption{What this report takes from prior work and what it adds.}
+\label{tab:contrib}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{0.43\columnwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Existing (source)} & \textbf{Ours} \\
+\midrule
+CLIP ViT-B/16 dual encoder~\cite{radford2021learningtransferablevisualmodels}; $384{\times}128$ input with interpolated position embeddings, $\tau{=}0.02$ (IRRA) & Choice of a frozen backbone with LoRA on Q/K/V/O of \emph{both} encoders; rank, scaling, schedule; implementation and training code \\
+\addlinespace
+SDM loss, InfoNCE baseline and ablation numbers on RSTPReid (IRRA~\cite{jiang2023crossmodalimplicitrelationreasoning}) & SDM as the \emph{sole} objective; all LoRA results; parameter, storage and communication accounting \\
+\addlinespace
+LoRA~\cite{hu2021loralowrankadaptationlarge}; MAE robustness~\cite{ghosh2017robustlossfunctionslabel}; confidence penalty~\cite{pereyra2017regularizingneuralnetworkspenalizing} & Decomposition and gradient of SDM with one-hot targets; in-batch positive rate; link to MAE and entropy bonus \\
+\addlinespace
+RSTPReid and its protocol~\cite{Zhu_2021} & MPCE control loss; InfoNCE/MPCE/SDM ablation; attribution of SDM's gain to the KL direction \\
+\bottomrule
+\end{tabularx}
+\end{table}
