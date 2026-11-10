@@ -26,7 +26,7 @@ We study the leanest configuration we could build: a frozen CLIP backbone, low-r
 \textbf{Existing (source)} & \textbf{Ours} \\
 \midrule
 \multicolumn{2}{@{}l}{\textit{Model}}\\
-CLIP ViT-B/16 dual encoder~\cite{radford2021learningtransferablevisualmodels}; $384{\times}128$ input, $\tau{=}0.02$~\cite{jiang2023crossmodalimplicitrelationreasoning}; LoRA~\cite{hu2021loralowrankadaptationlarge} & Frozen backbone with LoRA on Q/K/V/O of \emph{both} encoders; rank, scaling, schedule; training and evaluation code \\
+CLIP ViT-B/16 dual encoder~\cite{radford2021learningtransferablevisualmodels}; $384{\times}128$ input, $\tau{=}0.02$~\cite{jiang2023crossmodalimplicitrelationreasoning}; LoRA~\cite{hu2021loralowrankadaptationlarge} & Frozen backbone with LoRA on the Q/K/V/O projections of \emph{both} encoders; choice of rank, scaling and schedule \\
 \addlinespace
 \multicolumn{2}{@{}l}{\textit{Theory}}\\
 InfoNCE~\cite{oord2019representationlearningcontrastivepredictive}; SDM and its multi-positive rationale~\cite{jiang2023crossmodalimplicitrelationreasoning}; MAE robustness~\cite{ghosh2017robustlossfunctionslabel}; confidence penalty~\cite{pereyra2017regularizingneuralnetworkspenalizing} & In-batch positive rate (\cref{eq:posfrac}); SDM with one-hot targets as scaled MAE plus entropy bonus (\cref{eq:decomp}); its gradient (\cref{eq:grad}); MPCE as a control (\cref{eq:mpce}) \\

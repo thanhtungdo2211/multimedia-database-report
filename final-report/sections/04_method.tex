@@ -19,7 +19,7 @@ with $W$ frozen, $r=4$ and $\alpha=8$. $A$ is initialised Kaiming-uniform and $B
 
 \subsection{What SDM computes with identity labels}\label{sec:analysis}
 
-\textbf{How often does a batch contain a second positive?} SDM's target differs from InfoNCE's only in rows of $q$ with more than one non-zero entry. RSTPReid's training split has \nExamples{} image--caption examples, ten per identity (five images, two captions each). With uniform random batches of $B=\batchSize$, as in IRRA's default and our implementation, the probability that a row has another example of its identity in the batch is
+\textbf{How often does a batch contain a second positive?} SDM's target differs from InfoNCE's only in rows of $q$ with more than one non-zero entry. RSTPReid's training split has \nExamples{} image--caption examples, ten per identity (five images, two captions each). With uniform random batches of $B=\batchSize$, as used by IRRA and in our experiments, the probability that a row has another example of its identity in the batch is
 \begin{equation}
 1-\prod_{k=0}^{B-2}\frac{N-10-k}{N-1-k}=\posFrac\%,\qquad N=37{,}010.\label{eq:posfrac}
 \end{equation}
@@ -43,4 +43,4 @@ while InfoNCE gives $p_{i,j}-\mathbf{1}[j=i]$. On the matching pair, InfoNCE pus
 \mathcal{L}^{\mathrm{i2t}}_{\mathrm{mpce}}&=-\frac1B\sum_{i}\sum_{j}q_{i,j}\log p_{i,j}\nonumber\\
 &=\frac1B\sum_i\Big[\KL(q_{i,\cdot}\Vert p_{i,\cdot})+H(q_{i,\cdot})\Big],\label{eq:mpce}
 \end{align}
-summed over both directions as for SDM. MPCE uses SDM's targets with the \emph{forward} KL; $H(q)$ does not depend on the model. The three losses then give two controlled contrasts: MPCE versus InfoNCE changes only the target (identity-aware or diagonal), and SDM versus MPCE changes only the KL direction. With one-hot targets MPCE equals InfoNCE up to the factor $2$ of \cref{eq:nce}, and Adam-type optimisers are invariant to a constant rescaling of the loss (up to their $\epsilon$ and gradient clipping). If our explanation is right, MPCE should behave like InfoNCE and not like SDM. Unit tests in our code check all three identities numerically: \cref{eq:decomp}, MPCE $=2\times$InfoNCE for distinct identities, and SDM $\neq$ InfoNCE.
+summed over both directions as for SDM. MPCE uses SDM's targets with the \emph{forward} KL; $H(q)$ does not depend on the model. The three losses then give two controlled contrasts: MPCE versus InfoNCE changes only the target (identity-aware or diagonal), and SDM versus MPCE changes only the KL direction. With one-hot targets MPCE equals InfoNCE up to the factor $2$ of \cref{eq:nce}, and Adam-type optimisers are invariant to a constant rescaling of the loss (up to their $\epsilon$ and gradient clipping). If our explanation is right, MPCE should behave like InfoNCE and not like SDM.

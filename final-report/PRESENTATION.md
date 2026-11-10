@@ -2,7 +2,7 @@
 
 **Đỗ Thanh Tùng · 20252432M** · AC5211 Multimedia Database
 
-Tài liệu này dùng để chuẩn bị thuyết trình. Nó giải thích chi tiết hơn báo cáo IEEE 6 trang (`main.pdf`) ở ba điểm: các kết quả, key insight, và lý do SDM tốt hơn (kể cả trong FedAvg). Số liệu của 3 run loss lấy từ `generated/numbers.tex` và `generated/curve_*.csv`. Số liệu FedAvg ở mục 9.2 lấy từ log của các run FedAvg sơ bộ; phần này **không có trong báo cáo PDF**, chỉ dùng khi bị hỏi thêm.
+Tài liệu này dùng để chuẩn bị thuyết trình. Nó giải thích chi tiết hơn báo cáo IEEE 6 trang (`main.pdf`) ở ba điểm: các kết quả, key insight, và lý do SDM tốt hơn (kể cả trong FedAvg). Số liệu của 3 run loss trùng với báo cáo. Số liệu FedAvg ở mục 9.2 lấy từ các run FedAvg sơ bộ; phần này **không có trong báo cáo PDF**, chỉ dùng khi bị hỏi thêm.
 
 ---
 
@@ -30,7 +30,7 @@ Khớp với Bảng I của báo cáo (chia 3 nhóm) và nhãn [Existing] / [Our
 
 | Nhóm | Có sẵn (nguồn) | Của em |
 |---|---|---|
-| Model | CLIP ViT-B/16 (Radford et al.); ảnh 384×128, τ = 0.02 (IRRA); LoRA (Hu et al.) | Đóng băng backbone, gắn LoRA vào Q/K/V/O của **cả hai** encoder; chọn rank, α, lịch học; toàn bộ code train và eval |
+| Model | CLIP ViT-B/16 (Radford et al.); ảnh 384×128, τ = 0.02 (IRRA); LoRA (Hu et al.) | Đóng băng backbone, gắn LoRA vào Q/K/V/O của **cả hai** encoder; chọn rank, α và lịch học |
 | Lý thuyết | InfoNCE (Oord et al.); SDM và lý do multi-positive (IRRA); MAE bền với nhiễu (Ghosh et al.); confidence penalty (Pereyra et al.) | Tỉ lệ positive trong batch (Eq. 6); khai triển SDM khi target one-hot thành MAE + entropy bonus (Eq. 7); đạo hàm (Eq. 8); MPCE làm loss đối chứng (Eq. 9) |
 | Thử nghiệm | RSTPReid và protocol đánh giá; kết quả full fine-tune của IRRA (trích từ paper, không chạy lại) | Toàn bộ run LoRA; ablation InfoNCE / MPCE / SDM; tính chi phí tham số, lưu trữ và truyền thông FL |
 
@@ -38,11 +38,11 @@ Khớp với Bảng I của báo cáo (chia 3 nhóm) và nhãn [Existing] / [Our
 
 | Thành phần | Giá trị |
 |---|---|
-| Backbone | CLIP ViT-B/16 (`openai/clip-vit-base-patch16`), **đóng băng**, 149.6M tham số |
-| LoRA | r = 4, α = 8, gắn vào q/k/v/out_proj của 12 layer × 2 encoder → **96 module, 491,520 tham số** |
+| Backbone | CLIP ViT-B/16 (trọng số công khai của OpenAI), **đóng băng**, 149.6M tham số |
+| LoRA | r = 4, α = 8, gắn vào các phép chiếu Q/K/V/O của 12 layer × 2 encoder → **96 module, 491,520 tham số** |
 | Loss | Chỉ SDM, không dùng ID loss và IRR (ablation thay bằng InfoNCE hoặc MPCE) |
 | Dữ liệu | RSTPReid: train 3,701 ID × 5 ảnh × 2 caption = 37,010 mẫu; test gồm 1,000 ảnh gallery và 2,000 query |
-| Train | AdamW, lr 1e-4, wd 0.02, batch 64, warmup 3 epoch rồi cosine, AMP, seed 42, khoảng 7 phút/epoch trên Colab |
+| Train | AdamW, lr 1e-4, wd 0.02, batch 64, warmup 3 epoch rồi cosine, mixed precision, khoảng 7 phút/epoch trên một GPU |
 | Đánh giá | R@1/5/10, mAP, mINP sau mỗi epoch. **Peak** là epoch có R@1 cao nhất (cách IRRA báo cáo). **Converged** là trung bình ± độ lệch chuẩn của 6 epoch cuối (con số trung thực hơn) |
 | Nhiễu đo | R@1 trên 2,000 query có sai số chuẩn khoảng **1.1 điểm**. Chênh lệch dưới khoảng 2 điểm nên xem là ngang nhau |
 
@@ -127,7 +127,7 @@ InfoNCE ──(chỉ đổi target: one-hot → theo identity)──► MPCE ─
 |---|---|---|
 | 1 | LoRA r4 với 0.33% tham số ≈ full fine-tune khi cùng dùng SDM | 58.85 / 57.18 so với 57.20 (Bảng 4.1) |
 | 2 | Với random sampling, target của SDM gần như luôn one-hot | 1.52% dòng có positive thứ hai (công thức mục 7.1); tỉ số loss MPCE/InfoNCE ≈ 2.03–2.12 |
-| 3 | Khi target one-hot, SDM **không** rút gọn về InfoNCE | Khai triển SDM ≈ λ(1−p) − H(p); có unit test kiểm chứng |
+| 3 | Khi target one-hot, SDM **không** rút gọn về InfoNCE | Khai triển SDM ≈ λ(1−p) − H(p) (Eq. 7) |
 | 4 | Lợi thế của SDM đến từ **chiều KL**, không từ multi-positive | MPCE ≈ InfoNCE (Δ 0.18); SDM − MPCE = +3.15 |
 | 5 | InfoNCE overfit nhanh trên dataset nhỏ; SDM thì không | Mức tụt từ peak: −6.60 (InfoNCE) và −6.70 (MPCE) so với −1.90 (SDM) |
 | 6 | SDM không có tham số gắn với tập identity toàn cục, nên đưa vào FedAvg không cần sửa gì | Khác ID classifier: 512 × 3701 ≈ 1.90M tham số |
@@ -218,14 +218,14 @@ Nói theo cách trực quan:
 
 ### 9.2 Bằng chứng sơ bộ từ các run FedAvg (KHÔNG có trong báo cáo PDF)
 
-Các run FedAvg sơ bộ đều dùng **SDM**. Các run này được chạy trước khi thêm tuỳ chọn `--loss`, và khi đó SDM là loss duy nhất. Thang loss khoảng 15–25 cũng khớp với thang của SDM. Setup: chia theo camera thành 15 client, 1 local epoch mỗi round, lr 1e-4, batch 64.
+Các run FedAvg sơ bộ đều dùng **SDM** làm loss duy nhất. Setup: chia theo camera thành 15 client, 1 local epoch mỗi round, lr 1e-4, batch 64.
 
 | Run | Rank | Round | R@1 | mAP | Upload tích lũy |
 |---|---|---|---|---|---|
-| FedAvg (`B5_camera_lora4_v1`) | 4 | 5 / 10 / 15 / 20 | 46.95 / 52.55 / 54.15 / 56.00 | 36.60 / 40.26 / 42.05 / 43.34 | 141 / 281 / 422 / 563 MiB |
+| FedAvg, LoRA r = 4 | 4 | 5 / 10 / 15 / 20 | 46.95 / 52.55 / 54.15 / 56.00 | 36.60 / 40.26 / 42.05 / 43.34 | 141 / 281 / 422 / 563 MiB |
 | | 4 | 25 | 57.05 | 44.23 | 703 MiB |
 | | 4 | 30 | **57.05** | **44.63** | **844 MiB** |
-| FedAvg (`r8`, cosine) | 8 | 35 | 57.40 | 44.91 | 1,969 MiB |
+| FedAvg, LoRA r = 8 (cosine) | 8 | 35 | 57.40 | 44.91 | 1,969 MiB |
 | *Centralized (báo cáo)* | 4 | conv. | *57.18 ± 0.28* | *45.42* | – |
 | *Full FT FedAvg (ước tính)* | – | 30 | – | – | *251 GiB* |
 
@@ -255,13 +255,7 @@ Trên client nhỏ, một batch phủ gần hết dữ liệu của client, nên
 
 - **Chưa có run FedAvg với InfoNCE.** Do đó chưa thể khẳng định FedAvg tốt *nhờ* SDM; hiện chỉ biết FedAvg + SDM ≈ centralized + SDM.
 - Mỗi cấu hình chỉ có 1 seed. Run r4 đánh giá 5 round một lần, và r4/r8 dùng lịch LR khác nhau.
-- **Thí nghiệm đề xuất:** chạy lại FedAvg r4 với `--loss infonce` và `--loss mpce`, giữ nguyên partition camera (code đã có sẵn tuỳ chọn này):
-  ```bash
-  python -m experiments.clip_lora_fedavg.main --root /content/RSTPReid \
-    --partition camera --num_clients 15 --rounds 30 --lora_rank 4 \
-    --loss infonce --out_dir /content/drive/MyDrive/runs/fl_r4_infonce
-  ```
-  Nếu InfoNCE trong FL tụt sớm như ở centralized, còn SDM thì không, thì kết luận "SDM chống overfit và chống client drift" sẽ có bằng chứng trực tiếp.
+- **Thí nghiệm đề xuất:** chạy lại FedAvg r = 4 với InfoNCE và với MPCE, giữ nguyên cách chia 15 client theo camera và 30 round. Nếu InfoNCE trong FL tụt sớm như ở centralized, còn SDM thì không, thì kết luận "SDM chống overfit và chống client drift" sẽ có bằng chứng trực tiếp.
 
 ---
 
@@ -296,7 +290,7 @@ Trên client nhỏ, một batch phủ gần hết dữ liệu của client, nên
 
 | Câu hỏi | Gợi ý trả lời |
 |---|---|
-| Sao không chạy lại IRRA? | Giới hạn GPU (Colab). So sánh với dòng "chỉ SDM" trong ablation của chính IRRA là phép so sánh công bằng nhất có thể. Em nói rõ là số trích từ paper. |
+| Sao không chạy lại IRRA? | Giới hạn tài nguyên GPU. So sánh với dòng "chỉ SDM" trong ablation của chính IRRA là phép so sánh công bằng nhất có thể. Em nói rõ là số trích từ paper. |
 | Peak chọn trên test có gian lận không? | Đó là cách IRRA báo cáo. Em kèm thêm con số converged (trung bình 6 epoch cuối, không chọn epoch): 57.18, vẫn ngang 57.20. |
 | 1 seed thì sao tin được? | Chênh LoRA so với full FT nhỏ hơn 2 lần sai số chuẩn nên em chỉ kết luận ngang nhau. Chênh SDM so với InfoNCE và MPCE khoảng 3 lần sai số chuẩn, mAP cũng cho cùng chiều, và cả đường cong (không chỉ một điểm) đều khác biệt rõ. |
 | Lịch LR khác nhau có phải nguyên nhân? | Trong epoch 4–9, LR lệch tối đa 18% nhưng hai đường đi ngược chiều nhau. Warmup giống hệt nhau. |
@@ -311,8 +305,8 @@ Trên client nhỏ, một batch phủ gần hết dữ liệu của client, nên
 
 | Số liệu | Nguồn |
 |---|---|
-| 3 run loss | `final-report/results/{sdm,infonce,mpce}_log.csv` → `generated/numbers.tex`, `generated/curve_*.csv` |
-| IRRA | arXiv 2303.12501, Table 3, 4, 5 |
-| Chi phí FL | `scripts/gen_results.py` (tính từ số tham số) |
-| FedAvg r4 / r8 | Log của run `B5_camera_lora4_v1_20262308` và `r8` (`log.csv`, `partition_stats.json`) |
-| % positive thứ hai theo từng client (mục 9.3) | Ước lượng xấp xỉ từ `partition_stats.json`; không phải số đo thực nghiệm |
+| 3 run loss | Kết quả đánh giá sau mỗi epoch của 3 run (cùng nguồn với báo cáo) |
+| IRRA | Paper IRRA (CVPR 2023), Table 3, 4, 5 |
+| Chi phí FL | Tính từ số tham số (fp32), không phải số đo |
+| FedAvg r = 4 / r = 8 | Kết quả đánh giá theo round của 2 run FedAvg sơ bộ |
+| % positive thứ hai theo từng client (mục 9.3) | Ước lượng xấp xỉ từ thống kê chia client; không phải số đo thực nghiệm |
