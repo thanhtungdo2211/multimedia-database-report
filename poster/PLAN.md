@@ -9,7 +9,7 @@ Nội dung poster là bản rút gọn của báo cáo 6 trang `../final-report/
 | 1 | Khổ và hướng giấy | **A0 dọc** (841 × 1189 mm), 2 cột. Không có template của môn nên dùng `tikzposter` cơ bản | ✅ |
 | 2 | Phong cách và màu | **Tối giản kiểu bài báo IEEE**: theme `Simple`, nền trắng, chữ đen, viền khối xám mảnh. Chỉ thêm **1 màu nhấn** là xanh IEEE `#00629B` cho tiêu đề khối và câu kết luận. Trong biểu đồ chỉ giữ 3 màu loss của Fig. 2 | ✅ |
 | 3 | Tên tác giả | Viết không dấu: **Do Thanh Tung** (để compile được bằng pdfLaTeX) | ✅ |
-| 4 | QR code | QR 10 cm ở góc phải header, trỏ tới `github.com/thanhtungdo2211/master-thesis` (repo đã public, kiểm tra ngày 2026-11-09) | ✅ |
+| 4 | QR code | QR 10 cm ở góc phải header, trỏ tới `github.com/thanhtungdo2211/multimedia-database-report` (repo public, kiểm tra ngày 2026-11-10) | ✅ |
 
 ## 2. Quy chuẩn poster A0
 

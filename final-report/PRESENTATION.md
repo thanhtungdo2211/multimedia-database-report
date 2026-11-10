@@ -2,7 +2,7 @@
 
 **Đỗ Thanh Tùng · 20252432M** · AC5211 Multimedia Database
 
-Tài liệu này dùng để chuẩn bị thuyết trình. Nó giải thích chi tiết hơn báo cáo IEEE 6 trang (`main.pdf`) ở ba điểm: các kết quả, key insight, và lý do SDM tốt hơn (kể cả trong FedAvg). Số liệu của 3 run loss lấy từ `generated/numbers.tex` và `generated/curve_*.csv`. Số liệu FedAvg ở mục 8 lấy trực tiếp từ log trong `master-thesis/data/runs/`; phần này **không có trong báo cáo PDF**.
+Tài liệu này dùng để chuẩn bị thuyết trình. Nó giải thích chi tiết hơn báo cáo IEEE 6 trang (`main.pdf`) ở ba điểm: các kết quả, key insight, và lý do SDM tốt hơn (kể cả trong FedAvg). Số liệu của 3 run loss lấy từ `generated/numbers.tex` và `generated/curve_*.csv`. Số liệu FedAvg ở mục 9.2 lấy từ log của các run FedAvg sơ bộ; phần này **không có trong báo cáo PDF**, chỉ dùng khi bị hỏi thêm.
 
 ---
 
@@ -17,7 +17,7 @@ Tài liệu này dùng để chuẩn bị thuyết trình. Nó giải thích chi
 ## 1. Bối cảnh và mục tiêu
 
 - **Bài toán:** Text-Based Person Search (TBPS). Đầu vào là một câu mô tả, ví dụ "a woman in a white coat carrying a black backpack". Hệ thống xếp hạng ảnh người đi bộ trong gallery theo mức độ khớp với câu đó. Đây là bài toán cross-modal retrieval điển hình của multimedia database: gallery được encode một lần thành vector, mỗi truy vấn là một lần nearest-neighbour search trong không gian embedding chung.
-- **Nguồn gốc thí nghiệm:** các thí nghiệm này được lấy ra từ luận văn thạc sĩ về **PEFT + Federated Learning cho TBPS**. Ảnh camera thuộc về nhiều đơn vị vận hành khác nhau và thường không được gom về một chỗ, nên model phải được train ngay tại nơi giữ dữ liệu.
+- **Động lực:** hướng tới **Federated Learning + PEFT cho TBPS**. Ảnh camera thuộc về nhiều đơn vị vận hành khác nhau và thường không được gom về một chỗ, nên model phải được train ngay tại nơi giữ dữ liệu.
 - **Vấn đề của FL:** ở mỗi round, mỗi client phải nhận và gửi lại toàn bộ phần tham số được train, lặp lại hàng chục round. Nếu full fine-tune CLIP, mỗi client phải gửi **571 MiB mỗi round**.
 - **Tiền đề cần kiểm chứng trước khi làm FL:** *phần train nhỏ hơn rất nhiều mà độ chính xác giảm không đáng kể.* Báo cáo kiểm chứng tiền đề này ở setting centralized, nơi có thể đo sạch sẽ.
 - **Hai câu hỏi nghiên cứu:**
@@ -26,12 +26,13 @@ Tài liệu này dùng để chuẩn bị thuyết trình. Nó giải thích chi
 
 ## 2. Phần có sẵn và phần của em
 
-| Có sẵn (nguồn) | Của em |
-|---|---|
-| CLIP ViT-B/16; ảnh 384×128; τ = 0.02 (IRRA) | Đóng băng backbone, gắn LoRA vào Q/K/V/O của **cả hai** encoder; chọn rank, α, lịch học; toàn bộ code train và eval |
-| SDM loss, baseline InfoNCE, số ablation trên RSTPReid (IRRA, CVPR 2023) | Dùng SDM làm loss **duy nhất**; toàn bộ kết quả LoRA; tính chi phí tham số, lưu trữ và truyền thông FL |
-| LoRA (Hu et al.); MAE bền với nhiễu (Ghosh et al.); confidence penalty (Pereyra et al.) | Khai triển SDM khi target là one-hot và đạo hàm của nó; tính tỉ lệ positive trong batch; nối SDM với MAE và entropy bonus |
-| RSTPReid và protocol đánh giá | Loss đối chứng **MPCE**; ablation InfoNCE / MPCE / SDM; kết luận lợi thế của SDM đến từ chiều KL |
+Khớp với Bảng I của báo cáo (chia 3 nhóm) và nhãn [Existing] / [Ours] trên tiêu đề các section và các khối poster.
+
+| Nhóm | Có sẵn (nguồn) | Của em |
+|---|---|---|
+| Model | CLIP ViT-B/16 (Radford et al.); ảnh 384×128, τ = 0.02 (IRRA); LoRA (Hu et al.) | Đóng băng backbone, gắn LoRA vào Q/K/V/O của **cả hai** encoder; chọn rank, α, lịch học; toàn bộ code train và eval |
+| Lý thuyết | InfoNCE (Oord et al.); SDM và lý do multi-positive (IRRA); MAE bền với nhiễu (Ghosh et al.); confidence penalty (Pereyra et al.) | Tỉ lệ positive trong batch (Eq. 6); khai triển SDM khi target one-hot thành MAE + entropy bonus (Eq. 7); đạo hàm (Eq. 8); MPCE làm loss đối chứng (Eq. 9) |
+| Thử nghiệm | RSTPReid và protocol đánh giá; kết quả full fine-tune của IRRA (trích từ paper, không chạy lại) | Toàn bộ run LoRA; ablation InfoNCE / MPCE / SDM; tính chi phí tham số, lưu trữ và truyền thông FL |
 
 ## 3. Setup
 
@@ -215,9 +216,9 @@ Nói theo cách trực quan:
 2. **Lợi thế của SDM không phụ thuộc multi-positive.** Mục 5 cho thấy lợi thế đến từ chiều KL. Vì vậy, khi mỗi client chỉ có ít ảnh cho mỗi người, không có lý do gì để lợi thế đó biến mất.
 3. **Tiết kiệm 304 lần lưu lượng** (Bảng 4.2), cộng với 3.75 MiB trạng thái optimizer, phù hợp với thiết bị ở phía camera.
 
-### 9.2 Bằng chứng sơ bộ từ luận văn (KHÔNG có trong báo cáo PDF)
+### 9.2 Bằng chứng sơ bộ từ các run FedAvg (KHÔNG có trong báo cáo PDF)
 
-Các run FedAvg trong `master-thesis/data/runs/` đều dùng **SDM**. Các run này được chạy trước khi thêm tuỳ chọn `--loss`, và khi đó SDM là loss duy nhất. Thang loss khoảng 15–25 cũng khớp với thang của SDM. Setup: chia theo camera thành 15 client, 1 local epoch mỗi round, lr 1e-4, batch 64.
+Các run FedAvg sơ bộ đều dùng **SDM**. Các run này được chạy trước khi thêm tuỳ chọn `--loss`, và khi đó SDM là loss duy nhất. Thang loss khoảng 15–25 cũng khớp với thang của SDM. Setup: chia theo camera thành 15 client, 1 local epoch mỗi round, lr 1e-4, batch 64.
 
 | Run | Rank | Round | R@1 | mAP | Upload tích lũy |
 |---|---|---|---|---|---|
@@ -254,7 +255,7 @@ Trên client nhỏ, một batch phủ gần hết dữ liệu của client, nên
 
 - **Chưa có run FedAvg với InfoNCE.** Do đó chưa thể khẳng định FedAvg tốt *nhờ* SDM; hiện chỉ biết FedAvg + SDM ≈ centralized + SDM.
 - Mỗi cấu hình chỉ có 1 seed. Run r4 đánh giá 5 round một lần, và r4/r8 dùng lịch LR khác nhau.
-- **Thí nghiệm đề xuất:** chạy lại FedAvg r4 với `--loss infonce` và `--loss mpce`, giữ nguyên partition camera (code luận văn đã hỗ trợ):
+- **Thí nghiệm đề xuất:** chạy lại FedAvg r4 với `--loss infonce` và `--loss mpce`, giữ nguyên partition camera (code đã có sẵn tuỳ chọn này):
   ```bash
   python -m experiments.clip_lora_fedavg.main --root /content/RSTPReid \
     --partition camera --num_clients 15 --rounds 30 --lora_rank 4 \
@@ -281,7 +282,7 @@ Trên client nhỏ, một batch phủ gần hết dữ liệu của client, nên
 |---|---|---|---|
 | 1 | Title | Tên đề tài, tác giả, mã học viên | 0:20 |
 | 2 | Bài toán TBPS | Ví dụ query → gallery; cross-modal retrieval trong multimedia DB | 1:00 |
-| 3 | Bối cảnh FL | Luận văn PEFT + FL; 571 MiB mỗi client mỗi round; tiền đề cần chứng minh; Q1 và Q2 | 1:30 |
+| 3 | Động lực FL | Vì sao cần FL + PEFT cho TBPS; 571 MiB mỗi client mỗi round; tiền đề cần chứng minh; Q1 và Q2 | 1:30 |
 | 4 | Có sẵn và của em | Bảng mục 2 | 1:00 |
 | 5 | Method | Hình pipeline (Fig. 1); LoRA với 96 module và 0.49M tham số; chỉ dùng SDM | 1:30 |
 | 6 | Kết quả Q1 | Bảng 4.1, nhấn mạnh 58.85 / 57.18 so với 57.20; 304× | 1:30 |
@@ -302,7 +303,7 @@ Trên client nhỏ, một batch phủ gần hết dữ liệu của client, nên
 | MAE nổi tiếng là underfit, sao ở đây lại tốt? | Ở đây MAE được áp lên một backbone CLIP đã pre-train mạnh, nên phần lớn cặp đã có p không quá nhỏ ngay từ đầu. Entropy bonus thì giữ gradient không chết. Trên dataset nhỏ và nhiễu, tính bền quan trọng hơn tốc độ khớp. |
 | ε = 1e-8 có ý nghĩa gì? | Nó quyết định λ = log(1/ε) = 18.42, tức trọng số giữa MAE và entropy. Đổi ε là một thí nghiệm kiểm chứng tự nhiên cho cơ chế. |
 | Tại sao không dùng ID loss để bù 1.35 điểm? | ID head có 1.90M tham số (gấp 4 lần LoRA) và gắn với tập identity toàn cục, nên không phù hợp với FL. |
-| FL có non-IID không? | Có, chia theo camera: số ảnh mỗi client từ 56 đến 3,265, Jaccard identity 0.12. Dù vậy FedAvg r4 vẫn đạt 57.05, gần bằng centralized. Đây là kết quả sơ bộ của luận văn. |
+| FL có non-IID không? | Có, chia theo camera: số ảnh mỗi client từ 56 đến 3,265, Jaccard identity 0.12. Dù vậy FedAvg r4 vẫn đạt 57.05, gần bằng centralized. Đây là kết quả sơ bộ, nằm ngoài báo cáo. |
 
 ---
 
@@ -313,5 +314,5 @@ Trên client nhỏ, một batch phủ gần hết dữ liệu của client, nên
 | 3 run loss | `final-report/results/{sdm,infonce,mpce}_log.csv` → `generated/numbers.tex`, `generated/curve_*.csv` |
 | IRRA | arXiv 2303.12501, Table 3, 4, 5 |
 | Chi phí FL | `scripts/gen_results.py` (tính từ số tham số) |
-| FedAvg r4 / r8 | `master-thesis/data/runs/B5_camera_lora4_v1_20262308/log.csv`, `r8/log.csv`, `partition_stats.json` |
+| FedAvg r4 / r8 | Log của run `B5_camera_lora4_v1_20262308` và `r8` (`log.csv`, `partition_stats.json`) |
 | % positive thứ hai theo từng client (mục 9.3) | Ước lượng xấp xỉ từ `partition_stats.json`; không phải số đo thực nghiệm |
